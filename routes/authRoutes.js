@@ -6,12 +6,12 @@ const router = express.Router();
 // Register a new user
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, phone } = req.body;
-    const existingUser = await User.findOne({ email });
+    const { name, employeeId, department } = req.body;
+    const existingUser = await User.findOne({ employeeId });
     if (existingUser) {
       return res.status(409).send("Email already in use.");
     }
-    const user = new User({ name, email, phone });
+    const user = new User({ name, employeeId, department });
     await user.save();
     res
       .status(201)
@@ -25,8 +25,8 @@ router.post("/register", async (req, res) => {
 
 // Simple login route to check if user exists
 router.post("/login", async (req, res) => {
-  const { email } = req.body;
-  const user = await User.findOne({ email });
+  const { employeeId } = req.body;
+  const user = await User.findOne({ employeeId });
   if (!user) {
     return res.status(404).send("User not found.");
   }

@@ -109,7 +109,7 @@ async function calculateLeaderboard(type, id, page = 1, limit = 30) {
       { $match: { roundId: new mongoose.Types.ObjectId(id), isCorrect: true } },
       {
         $group: {
-          _id: "$userEmail",
+          _id: "$userEmpId",
           name: { $first: "$userName" },
           correctAnswers: { $sum: 1 },
           totalPoints: { $sum: pointsPerCorrectAnswer },
@@ -132,7 +132,7 @@ async function calculateLeaderboard(type, id, page = 1, limit = 30) {
       { $match: { isCorrect: true } },
       {
         $group: {
-          _id: "$userEmail",
+          _id: "$userEmpId",
           name: { $first: "$userName" },
           totalCorrectAnswers: { $sum: 1 },
           totalPoints: { $sum: pointsPerCorrectAnswer },
@@ -155,7 +155,7 @@ async function calculateLeaderboard(type, id, page = 1, limit = 30) {
       },
       {
         $group: {
-          _id: "$userEmail",
+          _id: "$userEmpId",
           name: { $first: "$userName" },
           timeTaken: { $min: "$timeTaken" }, // Fastest correct answer
           totalPoints: { $sum: pointsPerCorrectAnswer },
@@ -166,34 +166,6 @@ async function calculateLeaderboard(type, id, page = 1, limit = 30) {
   } else {
     throw new Error("Invalid leaderboard type specified");
   }
-
-  // **Join with User collection to get the phone number**
-  pipeline.push(
-    {
-      $lookup: {
-        from: "users",
-        localField: "_id",
-        foreignField: "email",
-        as: "userDetails",
-      },
-    },
-    {
-      $unwind: {
-        path: "$userDetails",
-        preserveNullAndEmptyArrays: true,
-      },
-    },
-    {
-      $addFields: {
-        phone: "$userDetails.phone",
-      },
-    },
-    {
-      $project: {
-        userDetails: 0,
-      },
-    }
-  );
 
   // **Pagination**
   pipeline.push({
