@@ -50,7 +50,7 @@ io.on("connection", (socket) => {
           round.questions.forEach((q, idx) => {
             round.questions[idx].isActive = idx === questionIndex;
           });
-          round.isActive = true; // Set the round itself as active
+          round.isActive = true;
 
           round.save().then(() => {
             io.emit("questionActivated", {
@@ -59,18 +59,28 @@ io.on("connection", (socket) => {
               question: round.questions[questionIndex],
               questionIndex,
               isActive: round.isActive,
-              timeLimit: 5, // seconds
+              timeLimit: 15, // Initial time limit (seconds)
             });
 
-            // Set a timer to deactivate the question after the time limit
-            setTimeout(() => {
-              round.questions[questionIndex].isActive = false;
-              round.isActive = false; // Optionally deactivate the round when the question deactivates
-              round.save().then(() => {
-                io.emit("timeUp", { roundNumber, questionIndex });
-                console.log("time is up and data is changed");
+            // Live countdown
+            let remainingTime = 15;
+            const countdownInterval = setInterval(() => {
+              remainingTime -= 1;
+              io.emit("updateTimer", {
+                roundNumber,
+                questionIndex,
+                remainingTime,
               });
-            }, 15000); // 5 seconds
+
+              if (remainingTime <= 0) {
+                clearInterval(countdownInterval);
+                round.questions[questionIndex].isActive = false;
+                round.isActive = false;
+                round.save().then(() => {
+                  io.emit("timeUp", { roundNumber, questionIndex });
+                });
+              }
+            }, 1000); // Emit every second
           });
         });
       }
@@ -88,23 +98,13 @@ async function calculateLeaderboard(type, id, page = 1, limit = 30) {
   const skip = (page - 1) * limit;
   let pipeline = [];
 
-  if (type === "question") {
-    // Leaderboard for a single question
-    pipeline = [
-      { $match: { questionId: new ObjectId(id), isCorrect: true } },
-      { $sort: { timestamp: 1 } },
-      {
-        $group: {
-          _id: "$userEmail",
-          name: { $first: "$userName" },
-          earliestCorrect: { $first: "$timestamp" },
-          totalPoints: { $sum: pointsPerCorrectAnswer }, // Assign points for each correct answer
-        },
-      },
-      { $sort: { totalPoints: -1, earliestCorrect: 1 } },
-    ];
-  } else if (type === "round") {
-    // Leaderboard for a single round
+  if (type === "round") {
+    // Get total number of questions in the round
+    const totalQuestions = await Response.distinct("questionId", {
+      roundId: new ObjectId(id),
+    }).then((questions) => questions.length);
+
+    // Leaderboard for a single round (only users who answered all questions correctly)
     pipeline = [
       { $match: { roundId: new ObjectId(id), isCorrect: true } },
       { $sort: { timestamp: 1 } },
@@ -114,13 +114,25 @@ async function calculateLeaderboard(type, id, page = 1, limit = 30) {
           name: { $first: "$userName" },
           correctAnswers: { $sum: 1 },
           totalPoints: { $sum: pointsPerCorrectAnswer },
-          averageTime: { $avg: "$timestamp" },
+          averageTime: { $avg: { $toLong: "$timestamp" } }, // Convert to milliseconds
         },
       },
-      { $sort: { totalPoints: -1, averageTime: 1 } },
+      {
+        $match: { correctAnswers: totalQuestions }, // Ensure user has answered all questions correctly
+      },
+      {
+        $addFields: {
+          averageTime: { $toDate: "$averageTime" }, // Convert back to date format
+        },
+      },
     ];
   } else if (type === "all") {
-    // Leaderboard across all rounds
+    // Get total number of questions across all rounds
+    const totalQuestions = await Response.distinct("questionId", {
+      isCorrect: true,
+    }).then((questions) => questions.length);
+
+    // Leaderboard across all rounds (only users who answered all questions correctly)
     pipeline = [
       { $match: { isCorrect: true } },
       { $sort: { timestamp: 1 } },
@@ -130,18 +142,65 @@ async function calculateLeaderboard(type, id, page = 1, limit = 30) {
           name: { $first: "$userName" },
           totalCorrectAnswers: { $sum: 1 },
           totalPoints: { $sum: pointsPerCorrectAnswer },
-          averageTime: { $avg: "$timestamp" },
+          averageTime: { $avg: { $toLong: "$timestamp" } }, // Convert to milliseconds
         },
       },
-      { $sort: { totalPoints: -1, averageTime: 1 } },
+      {
+        $match: { totalCorrectAnswers: totalQuestions }, // Ensure user has answered all questions correctly
+      },
+      {
+        $addFields: {
+          averageTime: { $toDate: "$averageTime" }, // Convert back to date format
+        },
+      },
+    ];
+  } else if (type === "question") {
+    // Leaderboard for a single question
+    pipeline = [
+      { $match: { questionId: new ObjectId(id), isCorrect: true } },
+      { $sort: { timestamp: 1 } },
+      {
+        $group: {
+          _id: "$userEmail",
+          name: { $first: "$userName" },
+          earliestCorrect: { $first: "$timestamp" },
+          totalPoints: { $sum: pointsPerCorrectAnswer },
+        },
+      },
     ];
   } else {
     throw new Error("Invalid leaderboard type specified");
   }
 
-  // Add facet stage to split the pipeline into two parts:
-  // 1. metadata: to count the total number of records
-  // 2. data: to return the paginated results
+  // **Join with User collection to get the phone number**
+  pipeline.push(
+    {
+      $lookup: {
+        from: "users",
+        localField: "_id",
+        foreignField: "email",
+        as: "userDetails",
+      },
+    },
+    {
+      $unwind: {
+        path: "$userDetails",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $addFields: {
+        phone: "$userDetails.phone",
+      },
+    },
+    {
+      $project: {
+        userDetails: 0,
+      },
+    }
+  );
+
+  // **Pagination**
   pipeline.push({
     $facet: {
       metadata: [{ $count: "total" }],
