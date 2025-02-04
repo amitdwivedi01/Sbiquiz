@@ -8,7 +8,7 @@ const ObjectId = mongoose.Types.ObjectId;
 const router = express.Router();
 
 router.post("/submit-answer", async (req, res) => {
-  const { questionId, userEmail, answer, userName } = req.body;
+  const { questionId, userEmail, answer, userName, timeTaken } = req.body;
   try {
     // Use aggregation to unwind the questions and match the specific question
     const results = await Round.aggregate([
@@ -35,6 +35,7 @@ router.post("/submit-answer", async (req, res) => {
       userName,
       answer,
       isCorrect,
+      timeTaken,
     });
 
     await newResponse.save();

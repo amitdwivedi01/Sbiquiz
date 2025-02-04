@@ -101,30 +101,25 @@ async function calculateLeaderboard(type, id, page = 1, limit = 30) {
   if (type === "round") {
     // Get total number of questions in the round
     const totalQuestions = await Response.distinct("questionId", {
-      roundId: new ObjectId(id),
+      roundId: new mongoose.Types.ObjectId(id),
     }).then((questions) => questions.length);
 
     // Leaderboard for a single round (only users who answered all questions correctly)
     pipeline = [
-      { $match: { roundId: new ObjectId(id), isCorrect: true } },
-      { $sort: { timestamp: 1 } },
+      { $match: { roundId: new mongoose.Types.ObjectId(id), isCorrect: true } },
       {
         $group: {
           _id: "$userEmail",
           name: { $first: "$userName" },
           correctAnswers: { $sum: 1 },
           totalPoints: { $sum: pointsPerCorrectAnswer },
-          averageTime: { $avg: { $toLong: "$timestamp" } }, // Convert to milliseconds
+          timeTaken: { $sum: "$timeTaken" }, // Sum total time taken
         },
       },
       {
-        $match: { correctAnswers: totalQuestions }, // Ensure user has answered all questions correctly
+        $match: { correctAnswers: totalQuestions }, // Ensure user answered all questions correctly
       },
-      {
-        $addFields: {
-          averageTime: { $toDate: "$averageTime" }, // Convert back to date format
-        },
-      },
+      { $sort: { timeTaken: 1 } }, // Sort by time taken (lower is better)
     ];
   } else if (type === "all") {
     // Get total number of questions across all rounds
@@ -135,38 +130,38 @@ async function calculateLeaderboard(type, id, page = 1, limit = 30) {
     // Leaderboard across all rounds (only users who answered all questions correctly)
     pipeline = [
       { $match: { isCorrect: true } },
-      { $sort: { timestamp: 1 } },
       {
         $group: {
           _id: "$userEmail",
           name: { $first: "$userName" },
           totalCorrectAnswers: { $sum: 1 },
           totalPoints: { $sum: pointsPerCorrectAnswer },
-          averageTime: { $avg: { $toLong: "$timestamp" } }, // Convert to milliseconds
+          timeTaken: { $sum: "$timeTaken" }, // Sum total time taken
         },
       },
       {
-        $match: { totalCorrectAnswers: totalQuestions }, // Ensure user has answered all questions correctly
+        $match: { totalCorrectAnswers: totalQuestions }, // Ensure user answered all questions correctly
       },
-      {
-        $addFields: {
-          averageTime: { $toDate: "$averageTime" }, // Convert back to date format
-        },
-      },
+      { $sort: { timeTaken: 1 } }, // Sort by time taken (lower is better)
     ];
   } else if (type === "question") {
     // Leaderboard for a single question
     pipeline = [
-      { $match: { questionId: new ObjectId(id), isCorrect: true } },
-      { $sort: { timestamp: 1 } },
+      {
+        $match: {
+          questionId: new mongoose.Types.ObjectId(id),
+          isCorrect: true,
+        },
+      },
       {
         $group: {
           _id: "$userEmail",
           name: { $first: "$userName" },
-          earliestCorrect: { $first: "$timestamp" },
+          timeTaken: { $min: "$timeTaken" }, // Fastest correct answer
           totalPoints: { $sum: pointsPerCorrectAnswer },
         },
       },
+      { $sort: { timeTaken: 1 } }, // Sort by fastest correct answer
     ];
   } else {
     throw new Error("Invalid leaderboard type specified");
@@ -222,6 +217,8 @@ async function calculateLeaderboard(type, id, page = 1, limit = 30) {
     totalRecords: total,
   };
 }
+
+module.exports = calculateLeaderboard;
 
 server.listen(4000, () => {
   console.log("Listening on port 4000");

@@ -7,7 +7,7 @@ const responseSchema = new mongoose.Schema({
   userName: { type: String, required: true },
   answer: { type: String, required: true },
   isCorrect: { type: Boolean, required: true },
-  timestamp: { type: Date, default: Date.now },
+  timeTaken: { type: Number, required: true },
 });
 
 // Adding a compound unique index
