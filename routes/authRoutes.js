@@ -6,12 +6,12 @@ const router = express.Router();
 // Register a new user
 router.post("/register", async (req, res) => {
   try {
-    const { name, employeeId, department } = req.body;
+    const { name, employeeId, department, location } = req.body;
     const existingUser = await User.findOne({ employeeId });
     if (existingUser) {
       return res.status(409).send("Email already in use.");
     }
-    const user = new User({ name, employeeId, department });
+    const user = new User({ name, employeeId, department, location });
     await user.save();
     res
       .status(201)
