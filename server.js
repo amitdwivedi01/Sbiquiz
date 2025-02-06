@@ -66,6 +66,42 @@ const seedRounds = [
       },
     ],
   },
+  {
+    roundNumber: 4,
+    isActive: false,
+    questions: [
+      {
+        questionText: "Which planet is known as the Red Planet?",
+        options: ["Earth", "Mars", "Jupiter", "Venus"],
+        correct: "Mars",
+        isActive: false,
+      },
+      {
+        questionText: "Who painted the Mona Lisa?",
+        options: ["Van Gogh", "Da Vinci", "Picasso", "Michelangelo"],
+        correct: "Da Vinci",
+        isActive: false,
+      },
+    ],
+  },
+  {
+    roundNumber: 5,
+    isActive: false,
+    questions: [
+      {
+        questionText: "What is the chemical symbol for water?",
+        options: ["H2O", "O2", "CO2", "NaCl"],
+        correct: "H2O",
+        isActive: false,
+      },
+      {
+        questionText: "How many continents are there on Earth?",
+        options: ["5", "6", "7", "8"],
+        correct: "7",
+        isActive: false,
+      },
+    ],
+  },
 ];
 
 Round.insertMany(seedRounds)

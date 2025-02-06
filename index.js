@@ -27,6 +27,20 @@ mongoose.connect(process.env.MONGO, {
   useUnifiedTopology: true,
 });
 
+async function seedDatabase() {
+  try {
+    const existingRounds = await Round.countDocuments();
+    if (existingRounds === 0) {
+      await Round.insertMany(seedRounds);
+      console.log("Rounds seeded successfully");
+    } else {
+      console.log("Rounds already exist, skipping seeding");
+    }
+  } catch (error) {
+    console.error("Error seeding rounds:", error);
+  }
+}
+
 app.use("/api/auth", authRoutes);
 app.use("/api/response", responseRoutes);
 
@@ -100,9 +114,8 @@ async function calculateLeaderboard(type, id, page = 1, limit = 30) {
 
   if (type === "round") {
     // Get total number of questions in the round
-    const totalQuestions = await Response.distinct("questionId", {
-      roundId: new mongoose.Types.ObjectId(id),
-    }).then((questions) => questions.length);
+    const round = await Round.findById(id);
+    const totalQuestions = round ? round.questions.length : 0;
 
     // Leaderboard for a single round (only users who answered all questions correctly)
     pipeline = [
@@ -123,9 +136,11 @@ async function calculateLeaderboard(type, id, page = 1, limit = 30) {
     ];
   } else if (type === "all") {
     // Get total number of questions across all rounds
-    const totalQuestions = await Response.distinct("questionId", {
-      isCorrect: true,
-    }).then((questions) => questions.length);
+    const rounds = await Round.find({}, "questions");
+    const totalQuestions = rounds.reduce(
+      (sum, round) => sum + round.questions.length,
+      0
+    );
 
     // Leaderboard across all rounds (only users who answered all questions correctly)
     pipeline = [
@@ -136,7 +151,7 @@ async function calculateLeaderboard(type, id, page = 1, limit = 30) {
           name: { $first: "$userName" },
           totalCorrectAnswers: { $sum: 1 },
           totalPoints: { $sum: pointsPerCorrectAnswer },
-          timeTaken: { $sum: "$timeTaken" }, // Sum total time taken
+          timeTaken: { $sum: "$timeTaken" },
         },
       },
       {
